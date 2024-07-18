@@ -29,12 +29,17 @@ clr.AddReference('System')
 clr.AddReference('System.Windows.Forms')
 clr.AddReference('System.Drawing')
 from System.Windows.Forms import *
+import System.Text.RegularExpressions as Regex
 from System.Drawing import *
 from System import *
 from h2pl.macro import *
 from System import DateTime
 from System.Diagnostics  import *
+import System.IO as IO
 
+
+
+# print Dir(System.Windows.Forms)
 
 
 #if you remove H2PL (Khodayar's library)  you'll loose most hydrologic functionalitys
@@ -344,7 +349,7 @@ class WetSpassMainPage():
             finally:
                  pass             
 
-        def buttonRunClick(self, sender, e):
+        def buttonRunClick(self, sender, e, sensitivity=False):
             try: 
                              
                 self.qt_1=0
@@ -430,16 +435,568 @@ class WetSpassMainPage():
                     self.CleanUnwantedMaps(currenstep)
                     currenstep=currenstep+1
                 self.CleanTempMaps(currenstep)
-                print "WetSpass has been run successfully!"
-                MessageBox.Show("Model has been run successfully!"+'\n' +"To see the results check  output directory "+'\n' + self.Tboxotputdir.Text)
-                Process.Start("MapViewer.exe")
+                if not sensitivity:
+                    print "WetSpass has been run successfully!"
+                    MessageBox.Show("Model has been run successfully!"+'\n' +"To see the results check  output directory "+'\n' + self.Tboxotputdir.Text)
+                    Process.Start("MapViewer.exe")
+                        
             except Exception, exceptionObject:                
                   MessageBox.Show(exceptionObject.Message.ToString() +'\n' +'Line ' + str(sys.exc_info()[-1].tb_lineno) + '\n'+ "Model failed to finish")
             finally:
                  pass 
                 
-    
-# +++++++++++++++++++++++++++++++++++++++++++++++++ Loading Input Maps ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # sensitivity controls
+        def SelectSensitivityIndexZero(self, sender, event):
+            self.sensitivityMethodIndex = 0
+
+        def SelectSensitivityIndexOne(self, sender, event):
+            self.sensitivityMethodIndex = 1
+
+        def SelectSensitivityIndexTwo(self, sender, event):
+            self.sensitivityMethodIndex = 2
+
+        def SelectSensitivityIndexThree(self, sender, event):
+            self.sensitivityMethodIndex = 3
+
+
+        def writeTo(self, fileName, text):
+            file = open(fileName, "w")
+            file.write(text)
+            file.close()
+
+        def readFrom(self, fileName):
+            file = open(fileName, "r")
+            text = file.readlines()
+            file.close()
+            return text
+
+        def getMapList(self, simulationPath):
+
+            # list all files with that name (remove number suffix and extension)
+            basename = IO.Path.GetFileNameWithoutExtension(simulationPath)
+
+            # remove all numbers from the end of the file name
+            basename = Regex.Regex.Replace(basename, r'\d+$', '')
+            
+            # Find the parent directory
+            parentDirectory = IO.Path.GetDirectoryName(simulationPath)
+
+            # Get all files in the parent directory
+            allFiles = IO.Directory.GetFiles(parentDirectory)
+
+            # Filter files that contain the basename
+            matchingFiles = [file for file in allFiles if basename in IO.Path.GetFileNameWithoutExtension(file)]
+
+            return matchingFiles
+
+
+        def getAverageMap(self, file_list):
+            # Read and parse the header from the first file
+            header_lines = self.readFrom(file_list[0])[:6]
+            data_lines_list = []
+
+            # Read data from all files
+            for file in file_list:
+                text = self.readFrom(file)
+                data_lines = text[6:]  # Skip header
+                data_lines_list.append([list(map(float, line.split())) for line in data_lines])
+
+            # Initialize the average map with zeros
+            num_rows = len(data_lines_list[0])
+            num_cols = len(data_lines_list[0][0])
+            avg_map = [[0.0 for _ in range(num_cols)] for _ in range(num_rows)]
+
+            # Calculate the sum of all maps
+            for data in data_lines_list:
+                for i in range(num_rows):
+                    for j in range(num_cols):
+                        avg_map[i][j] += data[i][j]
+
+            # Calculate the average
+            num_files = len(file_list)
+            for i in range(num_rows):
+                for j in range(num_cols):
+                    avg_map[i][j] /= num_files
+
+            # Format the output as the original file format
+            output_lines = header_lines + [" ".join(map(str, row)) + "\n" for row in avg_map]
+            output_lines = "".join(output_lines)
+
+            return output_lines
+            
+        def calculateRMSE(self, fnRef, fnSim):
+            # Read data from reference file
+            ref_text = self.readFrom(fnRef)
+            ref_data_lines = ref_text[6:]  # Skip header
+
+            # Read data from simulated file
+            sim_text = self.readFrom(fnSim)
+            sim_data_lines = sim_text[6:]  # Skip header
+
+            # Convert data to list of lists of floats for reference and simulated maps
+            ref_map_data = [list(map(float, line.split())) for line in ref_data_lines]
+            sim_map_data = [list(map(float, line.split())) for line in sim_data_lines]
+
+            # Check if the dimensions match
+            if len(ref_map_data) != len(sim_map_data) or len(ref_map_data[0]) != len(sim_map_data[0]):
+                raise ValueError("Reference and simulated data dimensions do not match.")
+
+            # Initialize variables to calculate squared differences and count of elements
+            squared_diff_sum = 0.0
+            count = 0
+
+            # Calculate squared differences
+            for i in range(len(ref_map_data)):
+                for j in range(len(ref_map_data[i])):
+                    squared_diff_sum += (ref_map_data[i][j] - sim_map_data[i][j]) ** 2
+                    count += 1
+
+            # Calculate MSE
+            mse = squared_diff_sum / count
+
+            # Calculate RMSE
+            rmse = mse ** 0.5
+
+            return rmse
+
+        def getParNamebyID(self, ID):
+            if ID == 1:
+                return "\"a\" Interception"
+            if ID == 2:
+                return "Alfa coefficient"
+            if ID == 3:
+                return "LP coefficient"
+            if ID == 4:
+                return "Average Intensity"
+            if ID == 5:
+                return "Slope factor"
+            if ID == 6:
+                return "Land factor"
+            if ID == 7:
+                return "Soil factor"
+            if ID == 8:
+                return "Basin area"
+            if ID == 9:
+                return "\"x\" coefficient"
+            if ID == 10:
+                return "Beta coefficient"
+            if ID == 11:
+                return "Contribution factor"
+            if ID == 12:
+                return "Base temperature"
+            if ID == 13:
+                return "Melt factor"
+            if ID == 14:
+                return "Snow density"
+
+
+        def setParameters(self, parameterDictionary):
+            for key, value in parameterDictionary.items():
+                value = str(float(value))
+                # if key == "1": # interception coefficient
+                #     self.TboxCoefAintercetion.Text = value
+                # if key == "2": # alfa coefficient
+                #     self.TboxAlfaCoef.Text = value
+                # if key == "3": # lp coefficient
+                #     self.LPtextBox.Text = value
+                # if key == "4": # a intensity
+                #     self.IntensitytextBox.Text = value
+                # if key == "5": # slope factor
+                #     self.TboxwSlop.Text = value
+                # if key == "6": # landuse factor
+                #     self.TboxwLanduse.Text = value
+                # if key == "7": # soil factor
+                #     self.TboxwSoil.Text = value
+                # if key == "8": # basin area
+                #     self.AreatextBox.Text = value
+                # if key == "9": # x coefficient
+                #     self.XtextBox.Text = value
+                # if key == "10": # beta coefficient
+                #     self.BetatextBox.Text = value
+                # if key == "11":
+                #     self.ContribtextBox.Text = value
+                # if key == "12": # base temerature
+                #     self.BaseTemp.Text = value
+                # if key == "13": # melting factor
+                #     self.MeltFacttextBox.Text = value
+                # if key == "14": # snow density
+                #     self.Snowdensity.Text = value
+
+                if key == "1": # interception coefficient
+                    if self.TboxCoefAintercetion.InvokeRequired:
+                        self.TboxCoefAintercetion.Invoke(
+                            Action(lambda: setattr(self.TboxCoefAintercetion, 'Text', value))
+                        )
+                    else:
+                        self.TboxCoefAintercetion.Text = value
+
+                if key == "2": # alfa coefficient
+                    if self.TboxAlfaCoef.InvokeRequired:
+                        self.TboxAlfaCoef.Invoke(
+                            Action(lambda: setattr(self.TboxAlfaCoef, 'Text', value))
+                        )
+                    else:
+                        self.TboxAlfaCoef.Text = value
+
+                if key == "3": # lp coefficient
+                    if self.LPtextBox.InvokeRequired:
+                        self.LPtextBox.Invoke(
+                            Action(lambda: setattr(self.LPtextBox, 'Text', value))
+                        )
+                    else:
+                        self.LPtextBox.Text = value
+
+                if key == "4": # a intensity
+                    if self.IntensitytextBox.InvokeRequired:
+                        self.IntensitytextBox.Invoke(
+                            Action(lambda: setattr(self.IntensitytextBox, 'Text', value))
+                        )
+                    else:
+                        self.IntensitytextBox.Text = value
+
+                if key == "5": # slope factor
+                    if self.TboxwSlop.InvokeRequired:
+                        self.TboxwSlop.Invoke(
+                            Action(lambda: setattr(self.TboxwSlop, 'Text', value))
+                        )
+                    else:
+                        self.TboxwSlop.Text = value
+
+                if key == "6": # landuse factor
+                    if self.TboxwLanduse.InvokeRequired:
+                        self.TboxwLanduse.Invoke(
+                            Action(lambda: setattr(self.TboxwLanduse, 'Text', value))
+                        )
+                    else:
+                        self.TboxwLanduse.Text = value
+
+                if key == "7": # soil factor
+                    if self.TboxwSoil.InvokeRequired:
+                        self.TboxwSoil.Invoke(
+                            Action(lambda: setattr(self.TboxwSoil, 'Text', value))
+                        )
+                    else:
+                        self.TboxwSoil.Text = value
+
+                if key == "8": # basin area
+                    if self.AreatextBox.InvokeRequired:
+                        self.AreatextBox.Invoke(
+                            Action(lambda: setattr(self.AreatextBox, 'Text', value))
+                        )
+                    else:
+                        self.AreatextBox.Text = value
+
+                if key == "9": # x coefficient
+                    if self.XtextBox.InvokeRequired:
+                        self.XtextBox.Invoke(
+                            Action(lambda: setattr(self.XtextBox, 'Text', value))
+                        )
+                    else:
+                        self.XtextBox.Text = value
+
+                if key == "10": # beta coefficient
+                    if self.BetatextBox.InvokeRequired:
+                        self.BetatextBox.Invoke(
+                            Action(lambda: setattr(self.BetatextBox, 'Text', value))
+                        )
+                    else:
+                        self.BetatextBox.Text = value
+
+                if key == "11":
+                    if self.ContribtextBox.InvokeRequired:
+                        self.ContribtextBox.Invoke(
+                            Action(lambda: setattr(self.ContribtextBox, 'Text', value))
+                        )
+                    else:
+                        self.ContribtextBox.Text = value
+
+                if key == "12": # base temerature
+                    if self.BaseTemp.InvokeRequired:
+                        self.BaseTemp.Invoke(
+                            Action(lambda: setattr(self.BaseTemp, 'Text', value))
+                        )
+                    else:
+                        self.BaseTemp.Text = value
+
+                if key == "13": # melting factor
+                    if self.MeltFacttextBox.InvokeRequired:
+                        self.MeltFacttextBox.Invoke(
+                            Action(lambda: setattr(self.MeltFacttextBox, 'Text', value))
+                        )
+                    else:
+                        self.MeltFacttextBox.Text = value
+
+                if key == "14": # snow density
+                    if self.Snowdensity.InvokeRequired:
+                        self.Snowdensity.Invoke(
+                            Action(lambda: setattr(self.Snowdensity, 'Text', value))
+                        )
+                    else:
+                        self.Snowdensity.Text = value
+                        
+
+
+        def RunSensitivityAnalysis(self, sender, e):
+            
+            # make checks
+            parametersMin = []
+            parametersMax = []
+            parametersID = []
+
+            parametersMin.append(float(self.sensParameter_01_BoxLB.Text))
+            parametersMax.append(float(self.sensParameter_01_BoxUB.Text))
+            parametersID.append(1)
+            parametersMin.append(float(self.sensParameter_02_BoxLB.Text))
+            parametersMax.append(float(self.sensParameter_02_BoxUB.Text))
+            parametersID.append(2)
+            parametersMin.append(float(self.sensParameter_03_BoxLB.Text))
+            parametersMax.append(float(self.sensParameter_03_BoxUB.Text))
+            parametersID.append(3)
+            parametersMin.append(float(self.sensParameter_04_BoxLB.Text))
+            parametersMax.append(float(self.sensParameter_04_BoxUB.Text))
+            parametersID.append(4)
+            parametersMin.append(float(self.sensParameter_05_BoxLB.Text))
+            parametersMax.append(float(self.sensParameter_05_BoxUB.Text))
+            parametersID.append(5)
+            parametersMin.append(float(self.sensParameter_06_BoxLB.Text))
+            parametersMax.append(float(self.sensParameter_06_BoxUB.Text))
+            parametersID.append(6)
+            
+            if (self.sensParameter_07_BoxLB.Text != "") and (self.sensParameter_07_BoxUB.Text != ""):
+                parametersMin.append(float(self.sensParameter_07_BoxLB.Text))
+                parametersMax.append(float(self.sensParameter_07_BoxUB.Text))
+                parametersID.append(7)
+
+            if (self.sensParameter_08_BoxLB.Text != "") and (self.sensParameter_08_BoxUB.Text != ""):
+                parametersMin.append(float(self.sensParameter_08_BoxLB.Text))
+                parametersMax.append(float(self.sensParameter_08_BoxUB.Text))
+                parametersID.append(8)
+
+            if (self.sensParameter_09_BoxLB.Text != "") and (self.sensParameter_09_BoxUB.Text != ""):
+                parametersMin.append(float(self.sensParameter_09_BoxLB.Text))
+                parametersMax.append(float(self.sensParameter_09_BoxUB.Text))
+                parametersID.append(9)
+
+            if (self.sensParameter_10_BoxLB.Text != "") and (self.sensParameter_10_BoxUB.Text != ""):
+                parametersMin.append(float(self.sensParameter_10_BoxLB.Text))
+                parametersMax.append(float(self.sensParameter_10_BoxUB.Text))
+                parametersID.append(10)
+
+            if (self.sensParameter_11_BoxLB.Text != "") and (self.sensParameter_11_BoxUB.Text != ""):
+                parametersMin.append(float(self.sensParameter_11_BoxLB.Text))
+                parametersMax.append(float(self.sensParameter_11_BoxUB.Text))
+                parametersID.append(11)
+
+            if (self.sensParameter_12_BoxLB.Text != "") and (self.sensParameter_12_BoxUB.Text != ""):
+                parametersMin.append(float(self.sensParameter_12_BoxLB.Text))
+                parametersMax.append(float(self.sensParameter_12_BoxUB.Text))
+                parametersID.append(12)
+
+            if (self.sensParameter_13_BoxLB.Text != "") and (self.sensParameter_13_BoxUB.Text != ""):
+                parametersMin.append(float(self.sensParameter_13_BoxLB.Text))
+                parametersMax.append(float(self.sensParameter_13_BoxUB.Text))
+                parametersID.append(13)
+
+            if (self.sensParameter_14_BoxLB.Text != "") and (self.sensParameter_14_BoxUB.Text != ""):
+                parametersMin.append(float(self.sensParameter_14_BoxLB.Text))
+                parametersMax.append(float(self.sensParameter_14_BoxUB.Text))
+                parametersID.append(14)
+
+            if self.sensitivityReferenceFileName.Text == "".replace(" ", ""):
+                MessageBox.Show("Reference file name is empty!")
+                return
+
+            # clear the sensitivity directory
+            mapsDir =  self.Tboxworkingdir.Text+"\\outputs\\"
+            for file in IO.Directory.GetFiles("{0}sensitivity".format(mapsDir)):
+                try:
+                    IO.File.Delete(file)
+                except: pass
+
+        
+            if self.sensitivityRankingBox.InvokeRequired:
+                self.sensitivityRankingBox.Invoke(
+                    Action(lambda: setattr(self.sensitivityRankingBox, 'Text', ""))
+                )
+            else:
+                self.sensitivityRankingBox.Text = ""
+
+
+            self.statusSensitivity.Text = "Status: " + "First Run..."
+
+
+            if not IO.Directory.Exists("{0}sensitivity".format(mapsDir)):
+                try:
+                    IO.Directory.CreateDirectory("{0}sensitivity".format(mapsDir))
+                except: pass
+            
+            # copy the reference file to the sensitivity directory
+            simulatedMapPath = "{0}{1}".format(mapsDir,self.sensitivityReferenceFileName.Text)
+            referenceMapPath = "{0}sensitivity\\{1}".format(mapsDir, self.sensitivityReferenceFileName.Text)
+
+            # list all files with that name (remove number suffix and extension)
+            basename = IO.Path.GetFileNameWithoutExtension(simulatedMapPath)
+            basename = Regex.Regex.Replace(basename, r'\d+$', '')
+            simulatedMapPath = "{0}{1}.asc".format(mapsDir, basename)
+
+            
+            try: IO.File.Delete(simulatedMapPath)
+            except: pass
+
+            matchingFiles = self.getMapList(simulatedMapPath)
+            
+            for file in matchingFiles:
+                try:
+                    IO.File.Delete(file)
+                except: pass
+
+            self.buttonRunClick(sender, e, True)
+            
+            matchingFiles = self.getMapList(simulatedMapPath)
+            averageMapText = self.getAverageMap(matchingFiles)
+
+            try:
+                self.writeTo(referenceMapPath, averageMapText)
+            except:
+                MessageBox.Show("Error getting reference output:", str(e))
+                return None
+
+            csv_content = "ID,min,max\n"  # Header row
+            for i in range(len(parametersMin)):
+                csv_content += "{0},{1},{2}\n".format(str(parametersID[i]), str(parametersMin[i]), str(parametersMax[i]))
+
+            modelDirectory = "{0}sensitivity".format(mapsDir)
+
+            self.writeTo("{0}/par_data.stb".format(modelDirectory), csv_content)
+
+            # generate samples
+            if self.sensitivityMethodIndex == 0:
+                sensitivityMethodSelected = "sobol"
+            elif self.sensitivityMethodIndex == 1:
+                sensitivityMethodSelected = "FAST"
+            elif self.sensitivityMethodIndex == 2:
+                sensitivityMethodSelected = "RBD_FAST"
+            elif self.sensitivityMethodIndex == 3:
+                sensitivityMethodSelected = "DMIM"
+
+            arguments = "generate_sample {sensitivityMethodSelected} {modelDirectory} {seed}".format(
+                sensitivityMethodSelected=sensitivityMethodSelected,
+                modelDirectory=modelDirectory.Replace(" ", "__space__"),
+                seed = int(self.sensitivitySeed.Text)
+            )
+            
+            executableFileName = "C:\\WetSpass-M\\WetSpass-M\\sensitivity_api.exe"
+
+            try:
+                print "Executing command: {0} {1}".format(executableFileName, arguments)
+                process = Process()
+                process.StartInfo.FileName = executableFileName
+                process.StartInfo.Arguments = arguments
+                process.StartInfo.UseShellExecute = False
+                process.StartInfo.RedirectStandardOutput = True
+                process.StartInfo.CreateNoWindow = True
+                process.Start()
+                
+                output = process.StandardOutput.ReadToEnd()
+                process.WaitForExit()
+                
+            except Exception as e:
+                MessageBox.Show("Error executing command:", str(e))
+                return None
+
+            # run sensitivity analysis loops
+            # set parameters (function with line args)
+            parameterList = self.readFrom("{0}/par_sample.stb".format(modelDirectory))
+
+            count = 0
+            total = len(parameterList)
+
+            resultsFileString = ""
+            for line in parameterList:
+                
+                count += 1
+                # set parameters
+                parameterDictionary = {}
+                parameterValues = line.strip().split(",")
+
+                for i in range(len(parametersID)):
+                    parameterDictionary[str(parametersID[i])] = parameterValues[i]
+
+                self.setParameters(parameterDictionary)
+
+                # run model
+                print("Status: running parameter set {0} of {1}".format(count, total))
+                
+                if self.statusSensitivity.InvokeRequired:
+                    self.statusSensitivity.Invoke(
+                        Action(lambda: setattr(self.statusSensitivity, 'Text', 
+                            "Status: running parameter set {0} of {1}".format(count, total)))
+                    )
+                else:
+                    self.statusSensitivity.Text = "Status: running parameter set {0} of {1}".format(count, total)
+
+                self.buttonRunClick(sender, e, True)
+                
+                # evaluate and save to file
+
+                matchingFiles = self.getMapList(simulatedMapPath)
+                averageMapText = self.getAverageMap(matchingFiles)
+                
+                self.writeTo(simulatedMapPath, averageMapText)
+
+                rmse = self.calculateRMSE(referenceMapPath, simulatedMapPath)
+                resultsFileString += "{0}\n".format(rmse)
+
+                self.writeTo("{0}/perf_report.stb".format(modelDirectory), resultsFileString)
+
+
+            # when done, call api and rank parameters
+            arguments = "analyse_sensitivity {sensitivityMethodSelected} {modelDirectory} {seed}".format(
+                sensitivityMethodSelected=sensitivityMethodSelected,
+                modelDirectory=modelDirectory.Replace(" ", "__space__"),
+                seed = int(self.sensitivitySeed.Text)
+            )
+
+            try:
+                print "Executing command: {0} {1}".format(executableFileName, arguments)
+                process = Process()
+                process.StartInfo.FileName = executableFileName
+                process.StartInfo.Arguments = arguments
+                process.StartInfo.UseShellExecute = False
+                process.StartInfo.RedirectStandardOutput = True
+                process.StartInfo.CreateNoWindow = True
+                process.Start()
+                
+                output = process.StandardOutput.ReadToEnd()
+                process.WaitForExit()
+                
+            except Exception as e:
+                MessageBox.Show("Error executing command:", str(e))
+                return None
+
+            # read sensitivity and add to textbox
+            sensitivityResults = self.readFrom("{0}/s1_sensitivity.stb".format(modelDirectory))
+
+            sensitivityResultsString = "First Order Sensitivity Indices:\r\n\r\n"
+            sensitivityResultsStringCSV = "First Order Sensitivity Indices\nParameter,Index\n"
+
+            for i in range(len(parametersID)):
+                sensitivityResultsString += "{0}: {1}\r\n".format(self.getParNamebyID(parametersID[i]), "{:.5f}".format(float(sensitivityResults[i].strip())))
+                sensitivityResultsStringCSV += "{0},{1}\n".format(self.getParNamebyID(parametersID[i]), "{:.5f}".format(float(sensitivityResults[i].strip())))
+
+            if self.sensitivityRankingBox.InvokeRequired:
+                self.sensitivityRankingBox.Invoke(
+                    Action(lambda: setattr(self.sensitivityRankingBox, 'Text', sensitivityResultsString))
+                )
+            else:
+                self.sensitivityRankingBox.Text = sensitivityResultsString
+
+            self.writeTo("{0}/sensitivity_results.csv".format(modelDirectory), sensitivityResultsStringCSV)
+            MessageBox.Show("Sensitivity results saved to '" + "{0}/sensitivity_results.csv'".format(modelDirectory))
+
+
+
+        # +++++++++++++++++++++++++++++++++++++++++++++++++ Loading Input Maps ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
         def  LoadData(self,ii):
           try:                 
@@ -1366,10 +1923,13 @@ class WetSpassMainPage():
                 self.MeltFacttextBox.Text ="0.02"
                 self.BaseTemp.Text ="0"
                 self.Snowdensity.Text ="0.1"
+
         def buttonNextClick(self, sender, e):
             self.Pages.SelectedTab =self.runPage
         def buttonParmPgClick(self, sender, e):
             self.Pages.SelectedTab =self.optionPage
+
+
         def loadpage(self):
                 self.MYcomponents = ComponentModel.Container()
                 self.toolTip1 = ToolTip(self.MYcomponents)
@@ -1394,6 +1954,7 @@ class WetSpassMainPage():
                 self.inputPage = TabPage()         #page 1
                 self.optionPage = TabPage()        #page 2
                 self.runPage = TabPage()           #page 3
+                self.sensitivityPage = TabPage()           #page 3
                 self.lookupEditorPage = TabPage()    #page 4
                 self.ParamPage = TabPage()         #page 5
                 self.CalibPage = TabPage()         #page 6
@@ -1404,6 +1965,7 @@ class WetSpassMainPage():
                 self.Pages.Controls.Add(self.optionPage)                
                 self.Pages.Controls.Add(self.ParamPage)
                 self.Pages.Controls.Add(self.runPage)
+                self.Pages.Controls.Add(self.sensitivityPage)
                 self.Pages.Controls.Add(self.lookupEditorPage)
                 #We are not going to introduce automatic calibration in this version so the page is hidden
                 #self.Pages.Controls.Add(self.CalibPage)
@@ -2516,9 +3078,23 @@ class WetSpassMainPage():
                 self.buteDoCalibr.UseVisualStyleBackColor = True
                 self.buteDoCalibr.Click += self.buteDoCalibrClick
 
-                
-                
+                self.sensitivityMethodIndex = 0
+
  #######################################################   END OF PAGE 2 ##################################################################################################               
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
  ######################################## #Start Page  Run  ##################################################################################################                                          
                 #< Page object>  butRun
                 self.butRun.BackgroundImage  = resourcesimage( "run")
@@ -2956,7 +3532,459 @@ class WetSpassMainPage():
                 self.checIncludSnow.CheckedChanged += self.ClickcheckSnow
                 #< Page object>  labellanduse
                 # 
-        
+
+
+                # sensitivity
+                self.sensitivityPage.Name = "sensitivityPage"
+                self.sensitivityPage.Text = "Sensitivity Analysis"
+
+                self.headerLabel = Label()
+                self.headerLabel.Text = "Sensitivity Analysis Method"
+                self.headerLabel.Location = Point(10,5)
+                self.headerLabel.Width = 280
+
+                        
+                self.sensitivitySelection1 = RadioButton()
+                self.sensitivitySelection1.Checked = True
+                self.sensitivitySelection1.Text = "Sobol"
+                self.sensitivitySelection1.Location = Point(10,20)
+                self.sensitivitySelection1.Width = 280
+                self.sensitivitySelection1.Click += self.SelectSensitivityIndexZero
+
+                self.sensitivitySelection2 = RadioButton()
+                self.sensitivitySelection2.Text = "Fourier Amplitude"
+                self.sensitivitySelection2.Location = Point(100,20)
+                self.sensitivitySelection2.Width = 280
+                self.sensitivitySelection2.Click += self.SelectSensitivityIndexOne
+
+                self.sensitivitySelection3 = RadioButton()
+                self.sensitivitySelection3.Text = "Random Balance Designs FAST"
+                self.sensitivitySelection3.Location = Point(220,20)
+                self.sensitivitySelection3.Width = 240
+                self.sensitivitySelection3.Click += self.SelectSensitivityIndexTwo
+
+                self.sensitivitySelection4 = RadioButton()
+                self.sensitivitySelection4.Text = "Delta Moment-Independent Measure"
+                self.sensitivitySelection4.Location = Point(190,0)
+                self.sensitivitySelection4.Width = 280
+                self.sensitivitySelection4.Click += self.SelectSensitivityIndexThree
+
+# 
+                self.runSensitivityButton = Button()
+                self.runSensitivityButton.Text = "Run Sensitivity Analysis"
+                self.runSensitivityButton.Location = Point(480, 5)
+                self.runSensitivityButton.Width = 200
+                self.runSensitivityButton.Height = 50
+
+                self.runSensitivityButton.Click += self.RunSensitivityAnalysis
+                
+
+
+                self.bigParameterLabel = Label()
+                self.bigParameterLabel.Location = Point(10, 50)
+                self.bigParameterLabel.Text = "Parameters Bounds"
+                self.bigParameterLabelLB = Label()
+                self.bigParameterLabelLB.Location = Point(200, 50)
+                self.bigParameterLabelLB.Text = "LB"
+                self.bigParameterLabelUB = Label()
+                self.bigParameterLabelUB.Location = Point(250, 50)
+                self.bigParameterLabelUB.Text = "UB"
+
+
+
+                
+
+                self.sensParameterLabel1 = Label()
+                self.sensParameterLabel1.Location = Point(10, 70)
+                self.sensParameterLabel1.Text = "'a' Interceptions"
+
+                self.sensParameter_01_BoxLB = TextBox()
+                self.sensParameter_01_BoxLB.Name = "sensParameter_01_BoxLB"
+                self.sensParameter_01_BoxLB.Size = Size(40, 15)
+                self.sensParameter_01_BoxLB.Location = Point(200, 70 - 5)
+                self.sensParameter_01_BoxUB = TextBox()
+                self.sensParameter_01_BoxUB.Name = "sensParameter_01_BoxUB"
+                self.sensParameter_01_BoxUB.Size = Size(40, 15)
+                self.sensParameter_01_BoxUB.Location = Point(250, 70 - 5)
+                self.sensParameter_01_BoxLB.Text = "4.5"
+                self.sensParameter_01_BoxUB.Text = "5.0"
+
+                self.sensParameterLabel2 = Label()
+                self.sensParameterLabel2.Location = Point(10, 90)
+                self.sensParameterLabel2.Text = "Alpha Coefficient"
+
+                self.sensParameter_02_BoxLB = TextBox()
+                self.sensParameter_02_BoxLB.Name = "sensParameter_02_BoxLB"
+                self.sensParameter_02_BoxLB.Size = Size(40, 15)
+                self.sensParameter_02_BoxLB.Location = Point(200, 90 - 5)
+                self.sensParameter_02_BoxUB = TextBox()
+                self.sensParameter_02_BoxUB.Name = "sensParameter_02_BoxUB"
+                self.sensParameter_02_BoxUB.Size = Size(40, 15)
+                self.sensParameter_02_BoxUB.Location = Point(250, 90 - 5)
+                self.sensParameter_02_BoxLB.Text = "1.0"
+                self.sensParameter_02_BoxUB.Text = "2.0"
+
+
+
+
+                self.sensParameterLabel3 = Label()
+                self.sensParameterLabel3.Location = Point(10, 110)
+                self.sensParameterLabel3.Text = "Lp Coefficient"
+
+                self.sensParameter_03_BoxLB = TextBox()
+                self.sensParameter_03_BoxLB.Name = "sensParameter_03_BoxLB"
+                self.sensParameter_03_BoxLB.Size = Size(40, 15)
+                self.sensParameter_03_BoxLB.Location = Point(200, 110 - 5)
+                self.sensParameter_03_BoxUB = TextBox()
+                self.sensParameter_03_BoxUB.Name = "sensParameter_03_BoxUB"
+                self.sensParameter_03_BoxUB.Size = Size(40, 15)
+                self.sensParameter_03_BoxUB.Location = Point(250, 110 - 5)
+                self.sensParameter_03_BoxLB.Text = "0.8"
+                self.sensParameter_03_BoxUB.Text = "0.9"
+
+
+
+
+                self.sensParameterLabel4 = Label()
+                self.sensParameterLabel4.Location = Point(10, 130)
+                self.sensParameterLabel4.Text = "Average Intensity"
+
+                self.sensParameter_04_BoxLB = TextBox()
+                self.sensParameter_04_BoxLB.Name = "sensParameter_04_BoxLB"
+                self.sensParameter_04_BoxLB.Size = Size(40, 15)
+                self.sensParameter_04_BoxLB.Location = Point(200, 130 - 5)
+                self.sensParameter_04_BoxUB = TextBox()
+                self.sensParameter_04_BoxUB.Name = "sensParameter_04_BoxUB"
+                self.sensParameter_04_BoxUB.Size = Size(40, 15)
+                self.sensParameter_04_BoxUB.Location = Point(250, 130 - 5)
+                self.sensParameter_04_BoxLB.Text = "3.5"
+                self.sensParameter_04_BoxUB.Text = "4.5"
+
+
+
+                self.sensParameterLabel5 = Label()
+                self.sensParameterLabel5.Location = Point(10, 160)
+                self.sensParameterLabel5.Text = "Slope Factor"
+
+                self.sensParameter_05_BoxLB = TextBox()
+                self.sensParameter_05_BoxLB.Name = "sensParameter_05_BoxLB"
+                self.sensParameter_05_BoxLB.Size = Size(40, 15)
+                self.sensParameter_05_BoxLB.Location = Point(200, 160 - 5)
+                self.sensParameter_05_BoxUB = TextBox()
+                self.sensParameter_05_BoxUB.Name = "sensParameter_05_BoxUB"
+                self.sensParameter_05_BoxUB.Size = Size(40, 15)
+                self.sensParameter_05_BoxUB.Location = Point(250, 160 - 5)
+                self.sensParameter_05_BoxLB.Text = "1.0"
+                self.sensParameter_05_BoxUB.Text = "2.0"
+
+                
+                self.sensParameterLabel6 = Label()
+                self.sensParameterLabel6.Location = Point(10, 180)
+                self.sensParameterLabel6.Text = "Land Factor"
+
+                self.sensParameter_06_BoxLB = TextBox()
+                self.sensParameter_06_BoxLB.Name = "sensParameter_06_BoxLB"
+                self.sensParameter_06_BoxLB.Size = Size(40, 15)
+                self.sensParameter_06_BoxLB.Location = Point(200, 180 - 5)
+                self.sensParameter_06_BoxUB = TextBox()
+                self.sensParameter_06_BoxUB.Name = "sensParameter_06_BoxUB"
+                self.sensParameter_06_BoxUB.Size = Size(40, 15)
+                self.sensParameter_06_BoxUB.Location = Point(250, 180 - 5)
+                self.sensParameter_06_BoxLB.Text = "0.8"
+                self.sensParameter_06_BoxUB.Text = "0.9"
+
+
+
+                self.sensParameterLabel7 = Label()
+                self.sensParameterLabel7.Location = Point(10, 200)
+                self.sensParameterLabel7.Text = "Soil Factor"
+
+                self.sensParameter_07_BoxLB = TextBox()
+                self.sensParameter_07_BoxLB.Name = "sensParameter_07_BoxLB"
+                self.sensParameter_07_BoxLB.Size = Size(40, 15)
+                self.sensParameter_07_BoxLB.Location = Point(200, 200 - 5)
+                self.sensParameter_07_BoxUB = TextBox()
+                self.sensParameter_07_BoxUB.Name = "sensParameter_07_BoxUB"
+                self.sensParameter_07_BoxUB.Size = Size(40, 15)
+                self.sensParameter_07_BoxUB.Location = Point(250, 200 - 5)
+                self.sensParameter_07_BoxLB.Text = "3.5"
+                self.sensParameter_07_BoxUB.Text = "4.5"
+
+
+
+                self.sensParameterLabel8 = Label()
+                self.sensParameterLabel8.Location = Point(10, 230)
+                self.sensParameterLabel8.Text = "Basin Area (km2)"
+
+                self.sensParameter_08_BoxLB = TextBox()
+                self.sensParameter_08_BoxLB.Name = "sensParameter_08_BoxLB"
+                self.sensParameter_08_BoxLB.Size = Size(40, 15)
+                self.sensParameter_08_BoxLB.Location = Point(200, 230 - 5)
+                self.sensParameter_08_BoxUB = TextBox()
+                self.sensParameter_08_BoxUB.Name = "sensParameter_08_BoxUB"
+                self.sensParameter_08_BoxUB.Size = Size(40, 15)
+                self.sensParameter_08_BoxUB.Location = Point(250, 230 - 5)
+                self.sensParameter_08_BoxLB.Text = ""
+                self.sensParameter_08_BoxUB.Text = ""
+
+
+
+                self.sensParameterLabel9 = Label()
+                self.sensParameterLabel9.Location = Point(10, 250)
+                self.sensParameterLabel9.Text = "\"x\" coefficient"
+
+                self.sensParameter_09_BoxLB = TextBox()
+                self.sensParameter_09_BoxLB.Name = "sensParameter_09_BoxLB"
+                self.sensParameter_09_BoxLB.Size = Size(40, 15)
+                self.sensParameter_09_BoxLB.Location = Point(200, 250 - 5)
+                self.sensParameter_09_BoxUB = TextBox()
+                self.sensParameter_09_BoxUB.Name = "sensParameter_09_BoxUB"
+                self.sensParameter_09_BoxUB.Size = Size(40, 15)
+                self.sensParameter_09_BoxUB.Location = Point(250, 250 - 5)
+                self.sensParameter_09_BoxLB.Text = ""
+                self.sensParameter_09_BoxUB.Text = ""
+
+
+
+
+                self.sensParameterLabel10 = Label()
+                self.sensParameterLabel10.Location = Point(10, 270)
+                self.sensParameterLabel10.Text = "Beta Coefficient"
+
+                self.sensParameter_10_BoxLB = TextBox()
+                self.sensParameter_10_BoxLB.Name = "sensParameter_10_BoxLB"
+                self.sensParameter_10_BoxLB.Size = Size(40, 15)
+                self.sensParameter_10_BoxLB.Location = Point(200, 270 - 5)
+                self.sensParameter_10_BoxUB = TextBox()
+                self.sensParameter_10_BoxUB.Name = "sensParameter_10_BoxUB"
+                self.sensParameter_10_BoxUB.Size = Size(40, 15)
+                self.sensParameter_10_BoxUB.Location = Point(250, 270 - 5)
+                self.sensParameter_10_BoxLB.Text = ""
+                self.sensParameter_10_BoxUB.Text = ""
+
+
+
+                self.sensParameterLabel11 = Label()
+                self.sensParameterLabel11.Location = Point(10, 290)
+                self.sensParameterLabel11.Text = "Contribution Factor"
+
+                self.sensParameter_11_BoxLB = TextBox()
+                self.sensParameter_11_BoxLB.Name = "sensParameter_11_BoxLB"
+                self.sensParameter_11_BoxLB.Size = Size(40, 15)
+                self.sensParameter_11_BoxLB.Location = Point(200, 290 - 5)
+                self.sensParameter_11_BoxUB = TextBox()
+                self.sensParameter_11_BoxUB.Name = "sensParameter_11_BoxUB"
+                self.sensParameter_11_BoxUB.Size = Size(40, 15)
+                self.sensParameter_11_BoxUB.Location = Point(250, 290 - 5)
+                self.sensParameter_11_BoxLB.Text = ""
+                self.sensParameter_11_BoxUB.Text = ""
+                
+
+
+                self.sensParameterLabel12 = Label()
+                self.sensParameterLabel12.Location = Point(10, 320)
+                self.sensParameterLabel12.Text = "Base Temperature"
+
+                self.sensParameter_12_BoxLB = TextBox()
+                self.sensParameter_12_BoxLB.Name = "sensParameter_12_BoxLB"
+                self.sensParameter_12_BoxLB.Size = Size(40, 15)
+                self.sensParameter_12_BoxLB.Location = Point(200, 320 - 5)
+                self.sensParameter_12_BoxUB = TextBox()
+                self.sensParameter_12_BoxUB.Name = "sensParameter_12_BoxUB"
+                self.sensParameter_12_BoxUB.Size = Size(40, 15)
+                self.sensParameter_12_BoxUB.Location = Point(250, 320 - 5)
+                self.sensParameter_12_BoxLB.Text = ""
+                self.sensParameter_12_BoxUB.Text = ""
+
+
+
+                self.sensParameterLabel13 = Label()
+                self.sensParameterLabel13.Location = Point(10, 340)
+                self.sensParameterLabel13.Text = "Melt Factor"
+
+                self.sensParameter_13_BoxLB = TextBox()
+                self.sensParameter_13_BoxLB.Name = "sensParameter_13_BoxLB"
+                self.sensParameter_13_BoxLB.Size = Size(40, 15)
+                self.sensParameter_13_BoxLB.Location = Point(200, 340 - 5)
+                self.sensParameter_13_BoxUB = TextBox()
+                self.sensParameter_13_BoxUB.Name = "sensParameter_13_BoxUB"
+                self.sensParameter_13_BoxUB.Size = Size(40, 15)
+                self.sensParameter_13_BoxUB.Location = Point(250, 340 - 5)
+                self.sensParameter_13_BoxLB.Text = ""
+                self.sensParameter_13_BoxUB.Text = ""
+
+
+                self.sensParameterLabel14 = Label()
+                self.sensParameterLabel14.Location = Point(10, 360)
+                self.sensParameterLabel14.Text = "Snow Density"
+
+                self.sensParameter_14_BoxLB = TextBox()
+                self.sensParameter_14_BoxLB.Name = "sensParameter_14_BoxLB"
+                self.sensParameter_14_BoxLB.Size = Size(40, 15)
+                self.sensParameter_14_BoxLB.Location = Point(200, 360 - 5)
+                self.sensParameter_14_BoxUB = TextBox()
+                self.sensParameter_14_BoxUB.Name = "sensParameter_14_BoxUB"
+                self.sensParameter_14_BoxUB.Size = Size(40, 15)
+                self.sensParameter_14_BoxUB.Location = Point(250, 360 - 5)
+                self.sensParameter_14_BoxLB.Text = ""
+                self.sensParameter_14_BoxUB.Text = ""
+
+
+
+
+
+                # reference widget
+                
+                self.referenceDataLabel = Label()
+                self.referenceDataLabel.Location = Point(330, 70)
+                self.referenceDataLabel.Text = "Reference Map: "
+
+                self.sensitivityReferenceFileName = TextBox()
+                self.sensitivityReferenceFileName.Text = "Interception.asc"
+                self.sensitivityReferenceFileName.Name = "sensitivityReferenceFileName"
+                self.sensitivityReferenceFileName.Size = Size(260, 18)
+                self.sensitivityReferenceFileName.Location = Point(420, 65)            
+
+                self.sampleSizeSeed = Label()
+                self.sampleSizeSeed.Location = Point(330, 100)
+                self.sampleSizeSeed.Text = "Sample Seed : "
+
+                self.sensitivitySeed = TextBox()
+                self.sensitivitySeed.Text = "20"
+                self.sensitivitySeed.Name = "sensitivitySeed"
+                self.sensitivitySeed.Size = Size(100, 18)
+                self.sensitivitySeed.Location = Point(420, 95)
+
+
+                self.sensitivityRankingBox = TextBox()
+                self.sensitivityRankingBox.Location = Point(330, 130)
+                self.sensitivityRankingBox.Size = Size(350, 200)
+                self.sensitivityRankingBox.Multiline = True
+                self.sensitivityRankingBox.ScrollBars = ScrollBars.Vertical  # Adds a vertical scrollbar
+                
+
+
+
+
+
+                self.statusSensitivity = Label()
+                self.statusSensitivity.Location = Point(330, 360)
+                self.statusSensitivity.Text = "Status: "
+                self.statusSensitivity.Width = 500
+
+
+                # Add controls to the page
+                self.sensitivityPage.Controls.Add(self.sensitivityRankingBox)
+
+                self.sensitivityPage.Controls.Add(self.statusSensitivity)
+                self.sensitivityPage.Controls.Add(self.sensitivitySeed)
+                self.sensitivityPage.Controls.Add(self.sampleSizeSeed)
+                self.sensitivityPage.Controls.Add(self.sensitivityReferenceFileName)
+                self.sensitivityPage.Controls.Add(self.referenceDataLabel)
+
+
+                # add reference options to the page
+                self.sensitivityPage.Controls.Add(self.sensParameter_01_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_01_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_02_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_02_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_03_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_03_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_04_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_04_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_05_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_05_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_06_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_06_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_07_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_07_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_08_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_08_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_09_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_09_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_10_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_10_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_11_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_11_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_12_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_12_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_13_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_13_BoxUB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_14_BoxLB)
+                self.sensitivityPage.Controls.Add(self.sensParameter_14_BoxUB)
+
+
+                self.sensitivityPage.Controls.Add(self.sensitivitySelection4)
+                self.sensitivityPage.Controls.Add(self.sensitivitySelection3)
+                self.sensitivityPage.Controls.Add(self.sensitivitySelection2)
+                self.sensitivityPage.Controls.Add(self.sensitivitySelection1)
+                self.sensitivityPage.Controls.Add(self.runSensitivityButton)
+
+                self.sensitivityPage.Controls.Add(self.bigParameterLabelUB)
+                self.sensitivityPage.Controls.Add(self.bigParameterLabelLB)
+                self.sensitivityPage.Controls.Add(self.headerLabel)
+
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel14)
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel13)
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel12)
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel11)
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel10)
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel9)
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel8)
+                
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel7)
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel6)
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel5)
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel4)
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel3)
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel2)
+                self.sensitivityPage.Controls.Add(self.sensParameterLabel1)
+                self.sensitivityPage.Controls.Add(self.bigParameterLabel)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                 # 
                 # WetSpassMainPage
                 # 
