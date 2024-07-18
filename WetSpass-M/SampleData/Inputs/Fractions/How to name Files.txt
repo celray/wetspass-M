@@ -1,0 +1,4 @@
+veg_area.asc for vegetation
+bare_area.asc for bare soil
+imp_area.asc for impervious area
+ow_area.asc for oen water
