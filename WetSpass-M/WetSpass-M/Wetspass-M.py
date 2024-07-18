@@ -3560,19 +3560,19 @@ class WetSpassMainPage():
                 self.sensitivitySelection3 = RadioButton()
                 self.sensitivitySelection3.Text = "Random Balance Designs FAST"
                 self.sensitivitySelection3.Location = Point(220,20)
-                self.sensitivitySelection3.Width = 240
+                self.sensitivitySelection3.Width = 200
                 self.sensitivitySelection3.Click += self.SelectSensitivityIndexTwo
 
                 self.sensitivitySelection4 = RadioButton()
                 self.sensitivitySelection4.Text = "Delta Moment-Independent Measure"
-                self.sensitivitySelection4.Location = Point(190,0)
-                self.sensitivitySelection4.Width = 280
+                self.sensitivitySelection4.Location = Point(420,20)
+                self.sensitivitySelection4.Width = 200
                 self.sensitivitySelection4.Click += self.SelectSensitivityIndexThree
 
 # 
                 self.runSensitivityButton = Button()
                 self.runSensitivityButton.Text = "Run Sensitivity Analysis"
-                self.runSensitivityButton.Location = Point(480, 5)
+                self.runSensitivityButton.Location = Point(480, 45)
                 self.runSensitivityButton.Width = 200
                 self.runSensitivityButton.Height = 50
 
@@ -3836,29 +3836,29 @@ class WetSpassMainPage():
                 # reference widget
                 
                 self.referenceDataLabel = Label()
-                self.referenceDataLabel.Location = Point(330, 70)
+                self.referenceDataLabel.Location = Point(330, 110)
                 self.referenceDataLabel.Text = "Reference Map: "
 
                 self.sensitivityReferenceFileName = TextBox()
                 self.sensitivityReferenceFileName.Text = "Interception.asc"
                 self.sensitivityReferenceFileName.Name = "sensitivityReferenceFileName"
                 self.sensitivityReferenceFileName.Size = Size(260, 18)
-                self.sensitivityReferenceFileName.Location = Point(420, 65)            
+                self.sensitivityReferenceFileName.Location = Point(420, 105)            
 
                 self.sampleSizeSeed = Label()
-                self.sampleSizeSeed.Location = Point(330, 100)
+                self.sampleSizeSeed.Location = Point(330, 140)
                 self.sampleSizeSeed.Text = "Sample Seed : "
 
                 self.sensitivitySeed = TextBox()
                 self.sensitivitySeed.Text = "20"
                 self.sensitivitySeed.Name = "sensitivitySeed"
                 self.sensitivitySeed.Size = Size(100, 18)
-                self.sensitivitySeed.Location = Point(420, 95)
+                self.sensitivitySeed.Location = Point(420, 135)
 
 
                 self.sensitivityRankingBox = TextBox()
-                self.sensitivityRankingBox.Location = Point(330, 130)
-                self.sensitivityRankingBox.Size = Size(350, 200)
+                self.sensitivityRankingBox.Location = Point(330, 170)
+                self.sensitivityRankingBox.Size = Size(350, 160)
                 self.sensitivityRankingBox.Multiline = True
                 self.sensitivityRankingBox.ScrollBars = ScrollBars.Vertical  # Adds a vertical scrollbar
                 
