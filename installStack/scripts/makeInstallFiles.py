@@ -34,13 +34,13 @@ RequestExecutionLevel user  ; Does not require admin rights
 # Define installer properties
 VIProductVersion "${{versionString}}.0"
 VIAddVersionKey /LANG=1033 "ProductName" "WetSpass-M"
-VIAddVersionKey /LANG=1033 "CompanyName" "Sarah Mutua & Celray James"
+VIAddVersionKey /LANG=1033 "CompanyName" "Celray James & HYDR-VUB"
 VIAddVersionKey /LANG=1033 "FileVersion" "${{versionString}}.0"
 VIAddVersionKey /LANG=1033 "FileDescription" "Installer for WetSpass-M"
-VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright © Sarah Mutua & Celray James {currentYear}"
+VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright © Celray James & HYDR-VUB {currentYear}"
 
 Function DotNetMessage
-    MessageBox MB_OK|MB_ICONINFORMATION ".NET 4.0 Runtime is needed to run this software. If you have not installed it, you can install it ster this installation, otherwise, installation will continue. After the finish window, you will find WetSpass-M in Start Menu"
+    MessageBox MB_OK|MB_ICONINFORMATION ".NET 4.0 Runtime is needed to run this software. If you have not installed it, you can install it after this installation, otherwise, installation will continue. After the finish window, you will find WetSpass-M in Start Menu"
 FunctionEnd
 
 !define UNINSTALLER_KEY "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${{PRODUCT_NAME}}"
@@ -62,7 +62,7 @@ Section "Main Files" SEC01
   WriteRegStr HKCU "${{UNINSTALLER_KEY}}" "DisplayIcon" "$INSTDIR\\WetSpass-M\\wetspass-M.ico"
   WriteRegStr HKCU "${{UNINSTALLER_KEY}}" "DisplayVersion" "${{versionString}}"
   WriteRegStr HKCU "${{UNINSTALLER_KEY}}" "URLInfoAbout" "https://github.com/celray/WetSpass-M"
-  WriteRegStr HKCU "${{UNINSTALLER_KEY}}" "Publisher" "Sarah Mutua & Celray James"
+  WriteRegStr HKCU "${{UNINSTALLER_KEY}}" "Publisher" "Celray James & HYDR-VUB"
   WriteRegDWORD HKCU "${{UNINSTALLER_KEY}}" "NoModify" 1
   WriteRegDWORD HKCU "${{UNINSTALLER_KEY}}" "NoRepair" 1
   # Optional: set the estimated size of the installed program (in KB)
@@ -109,7 +109,7 @@ SectionEnd
 import sys, os, shutil
 import subprocess
 from genericpath import exists
-from cjfx import write_to, delete_file
+from ccfx import writeFile, deleteFile
 import datetime
 
 if len(sys.argv) < 2:
@@ -133,13 +133,17 @@ def runNSIScript(scriptPath, nsisPath):
 
 mainInstallerScript = os.path.join(os.path.dirname(__file__), "../tmp1.nsi")
 
-write_to(mainInstallerScript, installer.format(versionString=version, currentYear=datetime.datetime.now().year))
+writeFile(mainInstallerScript, installer.format(versionString=version, currentYear=datetime.datetime.now().year))
 
 # create folder 'Installers' if it does not exis
 if not os.path.exists("Installers"): os.makedirs("Installers")
 makensisPath = "C:/Program Files (x86)/NSIS/Bin/makensis.exe"
 
+if not exists(makensisPath):
+    print("Error: NSIS makensis.exe not found at", makensisPath)
+    sys.exit()
+
 runNSIScript(mainInstallerScript, makensisPath)
 
-delete_file(mainInstallerScript)
+deleteFile(mainInstallerScript)
 print("done!")

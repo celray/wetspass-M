@@ -4115,7 +4115,7 @@ class WetSpassMainPage():
                      
                 self.Icon= Icon(rootpath+IO.Path.GetFileNameWithoutExtension( Application.ExecutablePath)+".ico")
                 self.Name = "WetSpassMainPage"
-                self.Text = "WetSpass-M 1.2"
+                self.Text = "WetSpass-M 1.3"
                 self.Pages.ResumeLayout(False)
                 self.inputPage.ResumeLayout(False)
                 self.inputPage.PerformLayout()
